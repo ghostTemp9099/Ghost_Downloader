@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_file
 import yt_dlp
 import os
 
@@ -16,25 +16,28 @@ def download():
         return jsonify({"error": "Missing URL"}), 400
 
     try:
-        # yt-dlp options to download the best video and audio, and use the cookies.txt file
+        
         ydl_opts = {
-            "format": "bestvideo+bestaudio/best",  # Download best video + audio
-            "merge_output_format": "mp4",  # Output format is mp4
-            "outtmpl": "/tmp/%(id)s.%(ext)s",  # Save file in the /tmp directory with unique file name
-            "cookiefile": "cookies.txt",  # Use the cookies.txt for authentication (make sure the file is in the same folder)
+            "format": "bestvideo+bestaudio/best",
+            "merge_output_format": "mp4",
+            "outtmpl": "/tmp/%(id)s.%(ext)s",
+            "cookiefile": "cookies.txt",
         }
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)  # Don't download, just get info
-            formats = info.get("formats", [])
-            video_url = formats[-1]["url"] if formats else None
+            info = ydl.extract_info(url, download=True)  # Download + merge
 
+        video_id = info.get("id")
+        ext = info.get("ext", "mp4")
+        local_file_path = f"/tmp/{video_id}.{ext}"
 
-        return jsonify({"download_url": video_url})  # Return the download URL
+        # ✅ Serve the downloaded file directly
+        return send_file(local_file_path, mimetype="video/mp4", as_attachment=False)
 
     except Exception as e:
-        return jsonify({"error": str(e)}), 500  # Handle errors
+        return jsonify({"error": str(e)}), 500
+
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))  # Get port from environment or default to 10000
-    app.run(host="0.0.0.0", port=port)  # Run the app on the specified host and port
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
