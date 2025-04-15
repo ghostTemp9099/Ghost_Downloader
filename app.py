@@ -20,6 +20,7 @@ def download():
             "format": "bestvideo+bestaudio/best",
             "merge_output_format": "mp4",
             "outtmpl": "/tmp/%(id)s.%(ext)s",
+            "cookiefile": "cookies.txt",  # <- 👈 Add this line to use cookies
         }
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -30,6 +31,7 @@ def download():
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
 
 
 if __name__ == "__main__":
