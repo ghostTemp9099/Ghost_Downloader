@@ -26,7 +26,9 @@ def download():
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)  # Don't download, just get info
-            video_url = info.get("url")  # Get the final video URL
+            formats = info.get("formats", [])
+            video_url = formats[-1]["url"] if formats else None
+
 
         return jsonify({"download_url": video_url})  # Return the download URL
 
