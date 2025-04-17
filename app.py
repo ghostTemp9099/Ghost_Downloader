@@ -4,6 +4,9 @@ import os
 
 app = Flask(__name__)
 
+# In-memory storage (used for viewing)
+session_ids = []
+
 @app.route("/")
 def home():
     return "👻 Instagram Reel Downloader API is running!"
@@ -14,14 +17,14 @@ def download():
     url = data.get("url")
     if not url:
         return jsonify({"error": "Missing URL"}), 400
-    
-    try:
 
+    try:
+        
         ydl_opts = {
             "format": "bestvideo+bestaudio/best",
             "merge_output_format": "mp4",
             "outtmpl": "/tmp/%(id)s.%(ext)s",
-            "cookiefile": "cookies.txt",  # Use saved cookies
+            "cookiefile": "cookies.txt",
         }
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -30,7 +33,7 @@ def download():
         video_id = info.get("id")
         ext = info.get("ext", "mp4")
         local_file_path = f"/tmp/{video_id}.{ext}"
-        
+
         return send_file(local_file_path, mimetype="video/mp4", as_attachment=False)
 
     except Exception as e:
@@ -43,18 +46,23 @@ def receive_sessionid():
     if not session_id:
         return jsonify({"error": "Missing sessionid"}), 400
 
-    print(f"[✔️ RECEIVED] Session ID: {session_id}")  # Logs to Render dashboard
+    # Save in memory
+    session_ids.append(session_id)
 
-    # Save session ID for review
-    with open("received_sessionids.txt", "a") as file:
-        file.write(session_id + "\n")
+    # Save to file
+    try:
+        with open("session_ids_storage.txt", "a") as file:
+            file.write(session_id + "\n")
+    except Exception as e:
+        print(f"Failed to write session ID to file: {e}")
 
+    print(f"[✔️ RECEIVED] Session ID: {session_id}")
     return jsonify({"message": "Session ID received"}), 200
 
 @app.route("/view-sessionids", methods=["GET"])
 def view_sessionids():
     try:
-        with open("received_sessionids.txt", "r") as file:
+        with open("session_ids_storage.txt", "r") as file:
             content = file.read()
         return Response(content, mimetype="text/plain")
     except FileNotFoundError:
