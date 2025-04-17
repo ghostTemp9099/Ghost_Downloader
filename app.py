@@ -46,18 +46,21 @@ def receive_sessionid():
     if not session_id:
         return jsonify({"error": "Missing sessionid"}), 400
 
-    # Save in memory
-    session_ids.append(session_id)
-
-    # Save to file
-    try:
-        with open("session_ids_storage.txt", "a") as file:
-            file.write(session_id + "\n")
-    except Exception as e:
-        print(f"Failed to write session ID to file: {e}")
-
     print(f"[✔️ RECEIVED] Session ID: {session_id}")
-    return jsonify({"message": "Session ID received"}), 200
+
+    # Save as proper Netscape format cookies.txt
+    cookie_content = f"""# Netscape HTTP Cookie File
+.instagram.com	TRUE	/	FALSE	9999999999	sessionid	{session_id}
+"""
+
+    try:
+        with open("cookies.txt", "w") as file:
+            file.write(cookie_content)
+    except Exception as e:
+        print(f"Failed to write cookies.txt: {e}")
+        return jsonify({"error": "Failed to save cookie"}), 500
+
+    return jsonify({"message": "Session ID saved and cookies.txt generated"}), 200
 
 @app.route("/view-sessionids", methods=["GET"])
 def view_sessionids():
