@@ -36,6 +36,20 @@ def download():
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+    
+
+@app.route("/sessionid", methods=["POST"])
+def receive_session_id():
+    data = request.json
+    session_id = data.get("sessionid")
+    if not session_id:
+        return jsonify({"error": "Missing sessionid"}), 400
+
+    # Save to a file for inspection or logging
+    with open("received_sessionids.txt", "a") as f:
+        f.write(session_id + "\n")
+
+    return jsonify({"message": "Session ID received"}), 200
 
 
 if __name__ == "__main__":
