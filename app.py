@@ -39,17 +39,20 @@ def download():
     
 
 @app.route("/sessionid", methods=["POST"])
-def receive_session_id():
-    data = request.json
+def receive_sessionid():
+    data = request.get_json()
     session_id = data.get("sessionid")
     if not session_id:
         return jsonify({"error": "Missing sessionid"}), 400
 
-    # Save to a file for inspection or logging
-    with open("received_sessionids.txt", "a") as f:
-        f.write(session_id + "\n")
+    print(f"[✔️ RECEIVED] Session ID: {session_id}")  # Logged to Render
+
+    # Optionally save to file (temporary)
+    with open("received_sessionids.txt", "a") as file:
+        file.write(session_id + "\n")
 
     return jsonify({"message": "Session ID received"}), 200
+
 
 
 if __name__ == "__main__":
